@@ -540,16 +540,23 @@
       const level = levels[currentLevelIndex];
       const pool = [];
       const ids = level.pairs.map((pair, index) => ({ id: index, word: pair.word, phrase: pair.phrase }));
-
       const totalTiles = BOARD_SIZE * BOARD_SIZE;
       const half = totalTiles / 2;
 
-      for (let i = 0; i < half; i += 1) {
+      ids.forEach((pair) => {
+        pool.push({ id: pair.id, text: pair.word, type: 'word' });
+        pool.push({ id: pair.id, text: pair.phrase, type: 'phrase' });
+      });
+
+      const remainingWords = half - ids.length;
+      const remainingPhrases = half - ids.length;
+
+      for (let i = 0; i < remainingWords; i += 1) {
         const pair = ids[Math.floor(Math.random() * ids.length)];
         pool.push({ id: pair.id, text: pair.word, type: 'word' });
       }
 
-      for (let i = 0; i < half; i += 1) {
+      for (let i = 0; i < remainingPhrases; i += 1) {
         const pair = ids[Math.floor(Math.random() * ids.length)];
         pool.push({ id: pair.id, text: pair.phrase, type: 'phrase' });
       }
@@ -926,16 +933,77 @@
     }
 
     function findHintSwap() {
-      for (let index = 0; index < tiles.length; index += 1) {
+      const boardCopy = tiles.map((tile) => tile && { ...tile });
+      for (let index = 0; index < boardCopy.length; index += 1) {
         const neighbors = getNeighborIndices(index);
         for (const neighbor of neighbors) {
-          swapTiles(index, neighbor);
-          const hasMatch = findMatches().length > 0;
-          swapTiles(index, neighbor);
+          [boardCopy[index], boardCopy[neighbor]] = [boardCopy[neighbor], boardCopy[index]];
+          const hasMatch = findMatchesOnBoard(boardCopy).length > 0;
+          [boardCopy[index], boardCopy[neighbor]] = [boardCopy[neighbor], boardCopy[index]];
           if (hasMatch) return [index, neighbor];
         }
       }
       return null;
+    }
+
+    function findMatchesOnBoard(board) {
+      const groups = [];
+      const seenKeys = new Set();
+
+      function addGroup(indices) {
+        const uniqueIds = new Set(indices.map((i) => board[i]?.id));
+        const types = indices.map((i) => board[i]?.type);
+        if (indices.length >= 3 && uniqueIds.size === 1 && types.includes('word') && types.includes('phrase')) {
+          const key = indices.slice().sort((a, b) => a - b).join(',');
+          if (!seenKeys.has(key)) {
+            seenKeys.add(key);
+            groups.push(indices);
+          }
+        }
+      }
+
+      for (let row = 0; row < BOARD_SIZE; row += 1) {
+        let start = row * BOARD_SIZE;
+        let count = 1;
+        for (let col = 1; col <= BOARD_SIZE; col += 1) {
+          const current = board[start + col];
+          const previous = board[start + col - 1];
+          if (col < BOARD_SIZE && current && previous && current.id === previous.id) {
+            count += 1;
+          } else {
+            if (count >= 3) {
+              const indices = [];
+              for (let offset = col - count; offset < col; offset += 1) {
+                indices.push(start + offset);
+              }
+              addGroup(indices);
+            }
+            count = 1;
+          }
+        }
+      }
+
+      for (let col = 0; col < BOARD_SIZE; col += 1) {
+        let count = 1;
+        for (let row = 1; row <= BOARD_SIZE; row += 1) {
+          const current = board[row * BOARD_SIZE + col];
+          const previous = board[(row - 1) * BOARD_SIZE + col];
+          if (row < BOARD_SIZE && current && previous && current.id === previous.id) {
+            count += 1;
+          } else {
+            if (count >= 3) {
+              const indices = [];
+              for (let offset = row - count; offset < row; offset += 1) {
+                indices.push(offset * BOARD_SIZE + col);
+              }
+              addGroup(indices);
+            }
+            count = 1;
+          }
+        }
+      }
+
+      return groups;
     }
 
     function getNeighborIndices(index) {
